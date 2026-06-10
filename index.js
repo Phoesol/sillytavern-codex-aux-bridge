@@ -17,9 +17,14 @@ const taskFilePrefix = 'codex-aux-bridge-task';
 const stateSchema = 'codex-aux-bridge.state.v1';
 const taskSchema = 'codex-aux-bridge.task.v1';
 const floatingButtonId = 'codex_aux_floating_button';
+const panelId = 'codex_aux_bridge_settings';
+const inlineSettingsId = 'codex_aux_bridge_settings_inline';
 
 const defaultSettings = {
     enabled: true,
+    panelOpen: false,
+    panelLeft: null,
+    panelTop: null,
     contextAssistantFloors: 3,
     maxCharsPerFloor: 1400,
     redactExplicit: true,
@@ -45,6 +50,8 @@ const defaultSettings = {
 let lastTaskFile = '';
 let exportTimer = null;
 let floatingPanelOpen = false;
+let panelLoadPromise = null;
+let extensionSettingsObserver = null;
 
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -83,10 +90,10 @@ function getByPath(object, path) {
 }
 
 function setStatus(text, error = false) {
-    const element = document.getElementById('codex_aux_status');
-    if (!element) return;
-    element.textContent = text;
-    element.classList.toggle('error', !!error);
+    document.querySelectorAll('.codex-aux-status').forEach(element => {
+        element.textContent = text;
+        element.classList.toggle('error', !!error);
+    });
     const floatingStatus = document.getElementById('codex_aux_floating_status');
     if (floatingStatus) {
         floatingStatus.textContent = text;
@@ -387,7 +394,7 @@ async function repairLatestAssistantMessage() {
 
 function writeSettingsToUi() {
     const settings = getSettings();
-    $('#codex_aux_bridge_settings [data-codex-aux-setting]').each(function () {
+    $('[data-codex-aux-setting]').each(function () {
         const path = this.dataset.codexAuxSetting;
         const value = getByPath(settings, path);
         if (this.type === 'checkbox') this.checked = !!value;
@@ -401,23 +408,228 @@ function readValueFromInput(input) {
     return input.value;
 }
 
-function bindSettingsUi() {
-    $('#codex_aux_bridge_settings [data-codex-aux-setting]').on('input change', function () {
-        setByPath(getSettings(), this.dataset.codexAuxSetting, readValueFromInput(this));
+function handleSettingInput(event) {
+    const input = event.currentTarget;
+    if (!input?.dataset?.codexAuxSetting) return;
+    setByPath(getSettings(), input.dataset.codexAuxSetting, readValueFromInput(input));
+    writeSettingsToUi();
+    saveSettingsDebounced();
+    saveStateFile().catch(error => setStatus(error.message, true));
+}
+
+function bindSettingsUi(root = document) {
+    if (!root || root.dataset?.codexAuxBound === '1') return;
+    root.querySelectorAll('[data-codex-aux-setting]').forEach(input => {
+        input.addEventListener('input', handleSettingInput);
+        input.addEventListener('change', handleSettingInput);
+    });
+    root.querySelectorAll('[data-codex-aux-action="export"]').forEach(button => {
+        button.addEventListener('click', () => {
+            exportTaskSnapshot().catch(error => setStatus(error.message, true));
+        });
+    });
+    root.querySelectorAll('[data-codex-aux-action="fix-latest"]').forEach(button => {
+        button.addEventListener('click', () => {
+            repairLatestAssistantMessage().catch(error => setStatus(error.message, true));
+        });
+    });
+    root.querySelectorAll('[data-codex-aux-action="open-panel"]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            openFloatingPanel().catch(error => setStatus(error.message, true));
+        });
+    });
+    root.querySelectorAll('[data-codex-aux-action="close-panel"]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeFloatingPanel();
+        });
+    });
+    root.querySelectorAll('[data-codex-aux-action="reset-panel"]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            const settings = getSettings();
+            settings.panelLeft = null;
+            settings.panelTop = null;
+            saveSettingsDebounced();
+            applyPanelPosition();
+        });
+    });
+    if (root.dataset) root.dataset.codexAuxBound = '1';
+}
+
+function getPanel() {
+    return document.getElementById(panelId);
+}
+
+function clampPanelPosition(left, top, root = getPanel()) {
+    const margin = 8;
+    const rect = root?.getBoundingClientRect();
+    const width = rect?.width || 440;
+    const height = rect?.height || 560;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    return {
+        left: Math.min(Math.max(margin, left), maxLeft),
+        top: Math.min(Math.max(margin, top), maxTop),
+    };
+}
+
+function applyPanelPosition() {
+    const root = getPanel();
+    if (!root) return;
+    const settings = getSettings();
+    if (window.innerWidth <= 640) {
+        root.style.left = '';
+        root.style.top = '';
+        root.style.right = '';
+        root.style.bottom = '';
+        return;
+    }
+    if (Number.isFinite(Number(settings.panelLeft)) && Number.isFinite(Number(settings.panelTop))) {
+        const next = clampPanelPosition(Number(settings.panelLeft), Number(settings.panelTop), root);
+        settings.panelLeft = next.left;
+        settings.panelTop = next.top;
+        root.style.left = `${next.left}px`;
+        root.style.top = `${next.top}px`;
+        root.style.right = 'auto';
+        root.style.bottom = 'auto';
+        return;
+    }
+    root.style.left = '';
+    root.style.top = '';
+    root.style.right = '';
+    root.style.bottom = '';
+}
+
+function setupPanelDrag(root) {
+    const handle = root?.querySelector('[data-codex-aux-drag]');
+    if (!handle || handle.dataset.codexAuxDragBound === '1') return;
+    let dragState = null;
+
+    function finishDrag(event) {
+        if (!dragState) return;
+        root.classList.remove('is-dragging');
+        try { handle.releasePointerCapture?.(dragState.pointerId); } catch (_) {}
+        dragState = null;
         saveSettingsDebounced();
         saveStateFile().catch(error => setStatus(error.message, true));
-    });
-    $('#codex_aux_export_task').on('click', () => {
-        exportTaskSnapshot().catch(error => setStatus(error.message, true));
-    });
-    $('#codex_aux_fix_latest').on('click', () => {
-        repairLatestAssistantMessage().catch(error => setStatus(error.message, true));
-    });
-    $('#codex_aux_close_panel').on('click', event => {
+        event?.preventDefault?.();
+    }
+
+    handle.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        if (event.target.closest('button, input, select, textarea, a')) return;
+        const rect = root.getBoundingClientRect();
+        dragState = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startLeft: rect.left,
+            startTop: rect.top,
+        };
+        root.classList.add('is-dragging');
+        handle.setPointerCapture?.(event.pointerId);
         event.preventDefault();
-        event.stopPropagation();
-        closeFloatingPanel();
     });
+
+    handle.addEventListener('pointermove', event => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        const next = clampPanelPosition(
+            dragState.startLeft + event.clientX - dragState.startX,
+            dragState.startTop + event.clientY - dragState.startY,
+            root,
+        );
+        const settings = getSettings();
+        settings.panelLeft = next.left;
+        settings.panelTop = next.top;
+        root.style.left = `${next.left}px`;
+        root.style.top = `${next.top}px`;
+        root.style.right = 'auto';
+        root.style.bottom = 'auto';
+        event.preventDefault();
+    });
+
+    handle.addEventListener('pointerup', finishDrag);
+    handle.addEventListener('pointercancel', finishDrag);
+    handle.dataset.codexAuxDragBound = '1';
+}
+
+async function ensurePanel() {
+    const existing = getPanel();
+    if (existing) return existing;
+    if (panelLoadPromise) return panelLoadPromise;
+    panelLoadPromise = (async () => {
+        const response = await fetch(settingsUrl);
+        if (!response.ok) throw new Error(`failed to load ${settingsUrl}: ${response.status}`);
+        const container = document.createElement('div');
+        container.innerHTML = (await response.text()).trim();
+        const root = container.firstElementChild;
+        if (!root) throw new Error('Codex 辅助桥面板模板为空');
+        document.body.append(root);
+        setupPanelDrag(root);
+        bindSettingsUi(root);
+        writeSettingsToUi();
+        floatingPanelOpen = !!getSettings().panelOpen;
+        root.hidden = !floatingPanelOpen;
+        root.classList.toggle('is-open', floatingPanelOpen);
+        applyPanelPosition();
+        updateFloatingButton();
+        return root;
+    })();
+    return panelLoadPromise;
+}
+
+function renderInlineSettings() {
+    return `
+        <div id="${inlineSettingsId}" class="inline-drawer codex-aux-inline-settings">
+            <div class="inline-drawer-toggle inline-drawer-header codex-aux-inline-header">
+                <div class="codex-aux-inline-title">
+                    <b>Codex 辅助桥</b>
+                    <span>生图辅助任务</span>
+                </div>
+                <button class="menu_button" type="button" data-codex-aux-action="open-panel" title="打开 Codex 辅助桥面板">
+                    <i class="fa-solid fa-up-right-from-square"></i>
+                </button>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content codex-aux-inline-content">
+                <div class="codex-aux-inline-row">
+                    <label class="checkbox_label codex-aux-toggle">
+                        <input type="checkbox" data-codex-aux-setting="enabled">
+                        <span>启用辅助桥</span>
+                    </label>
+                    <span class="codex-aux-status">就绪</span>
+                </div>
+                <div class="codex-aux-inline-row">
+                    <button class="menu_button" type="button" data-codex-aux-action="open-panel">打开控制台</button>
+                    <button class="menu_button" type="button" data-codex-aux-action="export">导出任务快照</button>
+                    <button class="menu_button" type="button" data-codex-aux-action="fix-latest">修复最新楼层</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function ensureInlineSettings() {
+    const host = document.getElementById('extensions_settings');
+    if (!host || document.getElementById(inlineSettingsId)) return;
+    host.insertAdjacentHTML('beforeend', renderInlineSettings());
+    const root = document.getElementById(inlineSettingsId);
+    if (root) {
+        try { toggleDrawer(root, false); } catch (_) {}
+        bindSettingsUi(root);
+        writeSettingsToUi();
+    }
+}
+
+function watchExtensionSettingsHost() {
+    ensureInlineSettings();
+    if (extensionSettingsObserver) return;
+    extensionSettingsObserver = new MutationObserver(() => ensureInlineSettings());
+    extensionSettingsObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 function updateFloatingButton() {
@@ -434,28 +646,35 @@ function updateFloatingButton() {
         document.body.append(button);
     }
     button.classList.toggle('active', floatingPanelOpen);
+    button.setAttribute('aria-expanded', String(floatingPanelOpen));
 }
 
-function openFloatingPanel() {
-    const root = document.getElementById('codex_aux_bridge_settings');
-    if (!root) return;
+async function openFloatingPanel() {
+    const root = await ensurePanel();
     floatingPanelOpen = true;
-    root.classList.add('codex-aux-floating-open');
-    const content = root.querySelector('.inline-drawer-content');
-    if (content) content.style.display = '';
+    getSettings().panelOpen = true;
+    root.hidden = false;
+    root.classList.add('is-open');
+    applyPanelPosition();
+    saveSettingsDebounced();
     updateFloatingButton();
 }
 
 function closeFloatingPanel() {
-    const root = document.getElementById('codex_aux_bridge_settings');
+    const root = getPanel();
     floatingPanelOpen = false;
-    root?.classList.remove('codex-aux-floating-open');
+    getSettings().panelOpen = false;
+    if (root) {
+        root.classList.remove('is-open');
+        root.hidden = true;
+    }
+    saveSettingsDebounced();
     updateFloatingButton();
 }
 
 function toggleFloatingPanel() {
     if (floatingPanelOpen) closeFloatingPanel();
-    else openFloatingPanel();
+    else openFloatingPanel().catch(error => setStatus(error.message, true));
 }
 
 function ensureFloatingStatus() {
@@ -470,15 +689,11 @@ function ensureFloatingStatus() {
 }
 
 async function loadSettingsUi() {
-    if ($('#codex_aux_bridge_settings').length) return;
-    const html = await (await fetch(settingsUrl)).text();
-    $('#extensions_settings').append(html);
-    const root = document.getElementById('codex_aux_bridge_settings');
-    if (root) toggleDrawer(root, false);
-    writeSettingsToUi();
-    bindSettingsUi();
+    await ensurePanel();
+    watchExtensionSettingsHost();
     updateFloatingButton();
     ensureFloatingStatus();
+    window.addEventListener('resize', applyPanelPosition);
 }
 
 function scheduleExport(reason = '') {
