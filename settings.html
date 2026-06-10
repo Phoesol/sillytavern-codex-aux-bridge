@@ -173,6 +173,22 @@
                     <input class="text_pole" type="number" min="1" max="16" step="1" data-codex-aux-setting="search.maxSources">
                 </label>
                 <label>
+                    <span>首次回看天数</span>
+                    <input class="text_pole" type="number" min="1" max="3650" step="1" data-codex-aux-setting="search.firstLookbackDays">
+                </label>
+                <label>
+                    <span>新闻跳过阈值(分钟)</span>
+                    <input class="text_pole" type="number" min="0" max="10080" step="5" data-codex-aux-setting="search.skipNewsUnderMinutes">
+                </label>
+                <label>
+                    <span>天气刷新(分钟)</span>
+                    <input class="text_pole" type="number" min="5" max="1440" step="5" data-codex-aux-setting="search.weatherRefreshMinutes">
+                </label>
+                <label>
+                    <span>百科缓存天数</span>
+                    <input class="text_pole" type="number" min="1" max="365" step="1" data-codex-aux-setting="search.entityCacheDays">
+                </label>
+                <label>
                     <span>补全范围</span>
                     <select class="text_pole" data-codex-aux-setting="search.scope">
                         <option value="encyclopedia">百科事实</option>
@@ -185,6 +201,10 @@
                 <label class="checkbox_label codex-aux-toggle">
                     <input type="checkbox" data-codex-aux-setting="search.includeWeather">
                     <span>补全当前地点天气</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.deltaOnlyAfterFirst">
+                    <span>首次后只查询上次到本次的增量</span>
                 </label>
                 <label class="checkbox_label codex-aux-toggle">
                     <input type="checkbox" data-codex-aux-setting="search.includeGlobalNews">

@@ -51,6 +51,11 @@ const defaultSettings = {
         enabled: true,
         scope: 'encyclopedia',
         maxQueries: 3,
+        firstLookbackDays: 365,
+        deltaOnlyAfterFirst: true,
+        skipNewsUnderMinutes: 60,
+        weatherRefreshMinutes: 60,
+        entityCacheDays: 30,
         includeWeather: true,
         includeGlobalNews: true,
         includeLocalNews: true,
@@ -63,6 +68,7 @@ const defaultSettings = {
 };
 
 let lastTaskFile = '';
+let lastTaskHash = '';
 let exportTimer = null;
 let floatingPanelOpen = false;
 let panelLoadPromise = null;
@@ -146,6 +152,39 @@ function safeId(value = '') {
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 80) || 'default';
+}
+
+function stableStringify(value) {
+    if (Array.isArray(value)) {
+        return `[${value.map(item => stableStringify(item)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+async function sha256Hex(text = '') {
+    const bytes = new TextEncoder().encode(String(text));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function taskHashStorageKey(chatId, targetMessageId) {
+    return `codex_aux_bridge_last_task_hash_${safeId(chatId)}_${targetMessageId}`;
+}
+
+function buildTaskDedupeBody(payload) {
+    const body = clone(payload);
+    delete body.taskId;
+    delete body.taskFile;
+    delete body.contentHash;
+    delete body.createdAt;
+    if (body.sceneContext && typeof body.sceneContext === 'object') {
+        body.sceneContext = { ...body.sceneContext };
+        delete body.sceneContext.exportedAt;
+    }
+    return body;
 }
 
 function stripBridgeInlineBlocks(text = '') {
@@ -265,6 +304,13 @@ function getWorldSnapshot() {
 
 function getFoxSearchSnapshot() {
     const settings = getSettings();
+    const cadence = {
+        firstLookbackDays: Number(settings.search.firstLookbackDays) || defaultSettings.search.firstLookbackDays,
+        deltaOnlyAfterFirst: settings.search.deltaOnlyAfterFirst !== false,
+        skipNewsUnderMinutes: Number(settings.search.skipNewsUnderMinutes) || defaultSettings.search.skipNewsUnderMinutes,
+        weatherRefreshMinutes: Number(settings.search.weatherRefreshMinutes) || defaultSettings.search.weatherRefreshMinutes,
+        entityCacheDays: Number(settings.search.entityCacheDays) || defaultSettings.search.entityCacheDays,
+    };
     let legacySettings = null;
     try {
         const raw = localStorage.getItem('websearch_settings');
@@ -276,6 +322,7 @@ function getFoxSearchSnapshot() {
         enabled: !!settings.search.enabled,
         scope: settings.search.scope,
         maxQueries: Number(settings.search.maxQueries) || defaultSettings.search.maxQueries,
+        cadence,
         legacyWebSearchSettings: legacySettings,
     };
 }
@@ -339,12 +386,10 @@ async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId
     const floors = collectRecentFloors(targetMessageId);
     const now = new Date().toISOString();
     const sceneContext = extractTimeLocationHints(floors);
-    const taskId = `${safeId(info.chatId)}-${targetMessageId}-${Date.now()}`;
-    const taskFile = `${taskFilePrefix}-${taskId}.json`;
     const payload = {
         schema: taskSchema,
-        taskId,
-        taskFile,
+        taskId: '',
+        taskFile: '',
         createdAt: now,
         currentChat: info,
         targetMessageId,
@@ -367,6 +412,13 @@ async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId
         },
         briefingTask: {
             enabled: !!settings.search.enabled,
+            refreshPolicy: {
+                firstLookbackDays: Number(settings.search.firstLookbackDays) || defaultSettings.search.firstLookbackDays,
+                deltaOnlyAfterFirst: settings.search.deltaOnlyAfterFirst !== false,
+                skipNewsUnderMinutes: Number(settings.search.skipNewsUnderMinutes) || defaultSettings.search.skipNewsUnderMinutes,
+                weatherRefreshMinutes: Number(settings.search.weatherRefreshMinutes) || defaultSettings.search.weatherRefreshMinutes,
+                entityCacheDays: Number(settings.search.entityCacheDays) || defaultSettings.search.entityCacheDays,
+            },
             needs: {
                 weather: !!settings.search.includeWeather,
                 globalNews: !!settings.search.includeGlobalNews,
@@ -379,8 +431,25 @@ async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId
             maxSources: Number(settings.search.maxSources) || defaultSettings.search.maxSources,
         },
     };
+    const contentHash = await sha256Hex(stableStringify(buildTaskDedupeBody(payload)));
+    const storageKey = taskHashStorageKey(info.chatId, targetMessageId);
+    const savedHash = localStorage.getItem(storageKey) || '';
+    const taskId = `${safeId(info.chatId)}-${targetMessageId}-${contentHash.slice(0, 16)}`;
+    const taskFile = `${taskFilePrefix}-${taskId}.json`;
+    if (contentHash && (contentHash === lastTaskHash || contentHash === savedHash)) {
+        lastTaskFile = lastTaskFile || taskFile;
+        lastTaskHash = contentHash;
+        setStatus('任务未变化，跳过导出');
+        return { ...payload, taskId, taskFile: lastTaskFile, contentHash };
+    }
+
+    payload.taskId = taskId;
+    payload.taskFile = taskFile;
+    payload.contentHash = contentHash;
     await saveUserJsonFile(taskFile, payload);
     lastTaskFile = taskFile;
+    lastTaskHash = contentHash;
+    localStorage.setItem(storageKey, contentHash);
     await saveStateFile();
     setStatus(`已导出 ${taskFile}`);
     return payload;
@@ -395,6 +464,7 @@ async function saveStateFile() {
         currentChat: info,
         settings: clone(getSettings()),
         latestTaskFile: lastTaskFile,
+        latestTaskHash: lastTaskHash,
     };
     await saveUserJsonFile(stateFileName, payload);
 }
