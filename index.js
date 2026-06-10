@@ -39,11 +39,26 @@ const defaultSettings = {
         enabled: true,
         mode: 'codex',
         includeExistingWorldEngineSnapshot: true,
+        evolutionIntensity: 'balanced',
+        timePolicy: 'strict',
+        timeScale: 'auto',
+        locationPolicy: 'infer',
+        maxEventUpdates: 5,
+        allowOffscreenEvents: true,
+        requireCausalEvidence: true,
     },
     search: {
         enabled: true,
         scope: 'encyclopedia',
         maxQueries: 3,
+        includeWeather: true,
+        includeGlobalNews: true,
+        includeLocalNews: true,
+        includeCalendar: true,
+        includeCulture: true,
+        includeEconomy: true,
+        includeTransport: false,
+        maxSources: 8,
     },
 };
 
@@ -283,11 +298,47 @@ function extractCandidateQueries(floors = []) {
     return [...candidates].slice(0, Math.max(1, Math.min(8, Number(getSettings().search.maxQueries) || 3)));
 }
 
+function collectPatternMatches(text, patterns, limit = 8) {
+    const output = [];
+    const seen = new Set();
+    for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            const value = String(match[1] || match[0] || '').replace(/\s+/g, ' ').trim();
+            if (!value || seen.has(value)) continue;
+            seen.add(value);
+            output.push(value);
+            if (output.length >= limit) return output;
+        }
+    }
+    return output;
+}
+
+function extractTimeLocationHints(floors = []) {
+    const joined = floors.map(floor => `#${floor.messageId} ${floor.text || ''}`).join('\n');
+    const timeHints = collectPatternMatches(joined, [
+        /((?:现在|当前|此时|时间|日期|今天|今日|明天|昨日|昨晚|今晚|清晨|早上|上午|中午|下午|傍晚|黄昏|夜里|深夜)[^。！？\n]{0,48})/g,
+        /(\d{4}[年/-]\d{1,2}[月/-]\d{1,2}[日号]?(?:\s*[上中下]午|\s*\d{1,2}[:：]\d{2})?)/g,
+        /(\d{1,2}[:：]\d{2}(?:\s*(?:AM|PM|am|pm))?)/g,
+    ], 10);
+    const locationHints = collectPatternMatches(joined, [
+        /(?:地点|位置|所在地|所在|来到|抵达|回到|前往|在|于)[:：\s]*([一-龥A-Za-z0-9·.' -]{2,36}(?:市|城|镇|村|区|街|路|巷|港|码头|车站|机场|酒店|旅馆|学校|医院|公司|庄园|宅邸|房间|大厅|办公室|广场|公园|山|河|湖|海|岛|星球|基地|舰船|空间站)?)/g,
+        /([一-龥A-Za-z0-9·.' -]{2,36}(?:市|城|镇|村|区|街|路|巷|港|码头|车站|机场|酒店|旅馆|学校|医院|公司|庄园|宅邸|房间|大厅|办公室|广场|公园|山|河|湖|海|岛|星球|基地|舰船|空间站))/g,
+    ], 10);
+    return {
+        exportedAt: new Date().toISOString(),
+        sourceMessageIds: floors.map(floor => floor.messageId),
+        timeHints,
+        locationHints,
+    };
+}
+
 async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId()) {
     const settings = getSettings();
     const info = getCurrentInfo();
     const floors = collectRecentFloors(targetMessageId);
     const now = new Date().toISOString();
+    const sceneContext = extractTimeLocationHints(floors);
     const taskId = `${safeId(info.chatId)}-${targetMessageId}-${Date.now()}`;
     const taskFile = `${taskFilePrefix}-${taskId}.json`;
     const payload = {
@@ -299,6 +350,7 @@ async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId
         targetMessageId,
         latestMessageId: chat.length - 1,
         settings: clone(settings),
+        sceneContext,
         floors,
         formatTarget: {
             enabled: !!settings.format.enabled,
@@ -312,6 +364,19 @@ async function exportTaskSnapshot(targetMessageId = findLatestAssistantMessageId
         searchTask: {
             ...getFoxSearchSnapshot(),
             candidateQueries: extractCandidateQueries(floors),
+        },
+        briefingTask: {
+            enabled: !!settings.search.enabled,
+            needs: {
+                weather: !!settings.search.includeWeather,
+                globalNews: !!settings.search.includeGlobalNews,
+                localNews: !!settings.search.includeLocalNews,
+                calendar: !!settings.search.includeCalendar,
+                culture: !!settings.search.includeCulture,
+                economy: !!settings.search.includeEconomy,
+                transport: !!settings.search.includeTransport,
+            },
+            maxSources: Number(settings.search.maxSources) || defaultSettings.search.maxSources,
         },
     };
     await saveUserJsonFile(taskFile, payload);

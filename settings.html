@@ -100,6 +100,57 @@
                     <option value="disabled">关闭</option>
                 </select>
             </label>
+            <div class="codex-aux-grid">
+                <label>
+                    <span>推衍强度</span>
+                    <select class="text_pole" data-codex-aux-setting="world.evolutionIntensity">
+                        <option value="conservative">保守：只处理明确变化</option>
+                        <option value="balanced">均衡：自然推进</option>
+                        <option value="active">活跃：允许更多后台变化</option>
+                        <option value="dramatic">剧烈：高冲突高事件密度</option>
+                    </select>
+                </label>
+                <label>
+                    <span>时间策略</span>
+                    <select class="text_pole" data-codex-aux-setting="world.timePolicy">
+                        <option value="strict">严格：必须符合正文时间</option>
+                        <option value="infer">推断：缺失时从场景推断</option>
+                        <option value="loose">宽松：只保持大体合理</option>
+                    </select>
+                </label>
+                <label>
+                    <span>时间尺度</span>
+                    <select class="text_pole" data-codex-aux-setting="world.timeScale">
+                        <option value="auto">自动识别</option>
+                        <option value="minutes">分钟级</option>
+                        <option value="hours">小时级</option>
+                        <option value="days">天级</option>
+                        <option value="scene">按场景段落</option>
+                    </select>
+                </label>
+                <label>
+                    <span>地点策略</span>
+                    <select class="text_pole" data-codex-aux-setting="world.locationPolicy">
+                        <option value="strict">严格：不明确则不移动</option>
+                        <option value="infer">推断：按行动和上下文判断</option>
+                        <option value="offscreen">允许后台地点变化</option>
+                    </select>
+                </label>
+                <label>
+                    <span>单轮最大世界更新数</span>
+                    <input class="text_pole" type="number" min="1" max="16" step="1" data-codex-aux-setting="world.maxEventUpdates">
+                </label>
+            </div>
+            <div class="codex-aux-toggle-grid">
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="world.allowOffscreenEvents">
+                    <span>允许后台事件自然发生</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="world.requireCausalEvidence">
+                    <span>重大变化必须有因果依据</span>
+                </label>
+            </div>
         </section>
 
         <section class="codex-aux-section">
@@ -118,12 +169,46 @@
                     <input class="text_pole" type="number" min="1" max="8" step="1" data-codex-aux-setting="search.maxQueries">
                 </label>
                 <label>
+                    <span>最大来源数</span>
+                    <input class="text_pole" type="number" min="1" max="16" step="1" data-codex-aux-setting="search.maxSources">
+                </label>
+                <label>
                     <span>补全范围</span>
                     <select class="text_pole" data-codex-aux-setting="search.scope">
                         <option value="encyclopedia">百科事实</option>
                         <option value="setting">设定资料</option>
                         <option value="mixed">百科 + 设定</option>
                     </select>
+                </label>
+            </div>
+            <div class="codex-aux-toggle-grid">
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeWeather">
+                    <span>补全当前地点天气</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeGlobalNews">
+                    <span>补全全球要闻</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeLocalNews">
+                    <span>补全当地要闻</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeCalendar">
+                    <span>补全节日/日历因素</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeCulture">
+                    <span>补全风俗文化因素</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeEconomy">
+                    <span>补全经济/物价背景</span>
+                </label>
+                <label class="checkbox_label codex-aux-toggle">
+                    <input type="checkbox" data-codex-aux-setting="search.includeTransport">
+                    <span>补全交通/路况背景</span>
                 </label>
             </div>
         </section>
