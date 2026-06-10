@@ -16,6 +16,7 @@ const stateFileName = 'codex-aux-bridge-state.json';
 const taskFilePrefix = 'codex-aux-bridge-task';
 const stateSchema = 'codex-aux-bridge.state.v1';
 const taskSchema = 'codex-aux-bridge.task.v1';
+const floatingButtonId = 'codex_aux_floating_button';
 
 const defaultSettings = {
     enabled: true,
@@ -43,6 +44,7 @@ const defaultSettings = {
 
 let lastTaskFile = '';
 let exportTimer = null;
+let floatingPanelOpen = false;
 
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -85,6 +87,11 @@ function setStatus(text, error = false) {
     if (!element) return;
     element.textContent = text;
     element.classList.toggle('error', !!error);
+    const floatingStatus = document.getElementById('codex_aux_floating_status');
+    if (floatingStatus) {
+        floatingStatus.textContent = text;
+        floatingStatus.classList.toggle('error', !!error);
+    }
 }
 
 function encodeBase64Utf8(value) {
@@ -406,6 +413,60 @@ function bindSettingsUi() {
     $('#codex_aux_fix_latest').on('click', () => {
         repairLatestAssistantMessage().catch(error => setStatus(error.message, true));
     });
+    $('#codex_aux_close_panel').on('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeFloatingPanel();
+    });
+}
+
+function updateFloatingButton() {
+    let button = document.getElementById(floatingButtonId);
+    if (!button) {
+        button = document.createElement('button');
+        button.id = floatingButtonId;
+        button.type = 'button';
+        button.className = 'codex-aux-fab';
+        button.title = 'Codex 辅助桥';
+        button.setAttribute('aria-label', 'Codex 辅助桥');
+        button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>辅助</span>';
+        button.addEventListener('click', toggleFloatingPanel);
+        document.body.append(button);
+    }
+    button.classList.toggle('active', floatingPanelOpen);
+}
+
+function openFloatingPanel() {
+    const root = document.getElementById('codex_aux_bridge_settings');
+    if (!root) return;
+    floatingPanelOpen = true;
+    root.classList.add('codex-aux-floating-open');
+    const content = root.querySelector('.inline-drawer-content');
+    if (content) content.style.display = '';
+    updateFloatingButton();
+}
+
+function closeFloatingPanel() {
+    const root = document.getElementById('codex_aux_bridge_settings');
+    floatingPanelOpen = false;
+    root?.classList.remove('codex-aux-floating-open');
+    updateFloatingButton();
+}
+
+function toggleFloatingPanel() {
+    if (floatingPanelOpen) closeFloatingPanel();
+    else openFloatingPanel();
+}
+
+function ensureFloatingStatus() {
+    if (document.getElementById('codex_aux_floating_status')) return;
+    const status = document.createElement('div');
+    status.id = 'codex_aux_floating_status';
+    status.className = 'codex-aux-floating-status';
+    status.textContent = '就绪';
+    const button = document.getElementById(floatingButtonId);
+    if (button?.parentNode) button.insertAdjacentElement('afterend', status);
+    else document.body.append(status);
 }
 
 async function loadSettingsUi() {
@@ -416,6 +477,8 @@ async function loadSettingsUi() {
     if (root) toggleDrawer(root, false);
     writeSettingsToUi();
     bindSettingsUi();
+    updateFloatingButton();
+    ensureFloatingStatus();
 }
 
 function scheduleExport(reason = '') {
@@ -434,6 +497,9 @@ window.CODEX_AUX_BRIDGE = {
     exportTaskSnapshot,
     repairLatestAssistantMessage,
     normalizeMessageFormat,
+    openFloatingPanel,
+    closeFloatingPanel,
+    toggleFloatingPanel,
 };
 
 function bindEvent(eventName, handler) {

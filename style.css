@@ -4,6 +4,108 @@
     gap: 10px;
 }
 
+#codex_aux_bridge_settings.codex-aux-floating-open {
+    position: fixed;
+    right: 18px;
+    bottom: 370px;
+    z-index: 29949;
+    display: flex;
+    width: min(420px, calc(100vw - 28px));
+    max-height: min(640px, calc(100dvh - 394px));
+    flex-direction: column;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+}
+
+#codex_aux_bridge_settings.codex-aux-floating-open .inline-drawer-content {
+    display: flex !important;
+}
+
+#codex_aux_bridge_settings .inline-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#codex_aux_bridge_settings .codex-aux-close {
+    display: none;
+    margin-left: auto;
+}
+
+#codex_aux_bridge_settings.codex-aux-floating-open .codex-aux-close {
+    display: inline-flex;
+}
+
+#codex_aux_bridge_settings.codex-aux-floating-open .inline-drawer-icon {
+    display: none;
+}
+
+.codex-aux-fab {
+    position: fixed;
+    right: 18px;
+    bottom: 300px;
+    z-index: 29950;
+    display: flex;
+    width: 58px;
+    height: 58px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 50%;
+    background: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+}
+
+.codex-aux-fab:hover,
+.codex-aux-fab.active {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.codex-aux-fab span {
+    max-width: 48px;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.codex-aux-floating-status {
+    position: fixed;
+    right: 82px;
+    bottom: 316px;
+    z-index: 29949;
+    display: none;
+    max-width: min(240px, calc(100vw - 112px));
+    overflow: hidden;
+    padding: 3px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    background: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.codex-aux-fab.active + .codex-aux-floating-status,
+.codex-aux-floating-status.error {
+    display: block;
+}
+
+.codex-aux-floating-status.error {
+    color: #ff6b6b;
+}
+
 #codex_aux_bridge_settings .codex-aux-row,
 #codex_aux_bridge_settings .codex-aux-actions {
     display: flex;
