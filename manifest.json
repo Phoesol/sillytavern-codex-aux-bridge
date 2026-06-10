@@ -1,0 +1,12 @@
+{
+    "display_name": "Codex 辅助桥",
+    "loading_order": 12,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Codex",
+    "version": "0.1.0",
+    "description": "为 Codex 生图工作流导出格式修复、世界推衍、资料补全设置和最小上下文。",
+    "homePage": "https://github.com/Phoesol/sillytavern-codex-aux-bridge"
+}
